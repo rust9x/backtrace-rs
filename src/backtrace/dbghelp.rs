@@ -95,7 +95,14 @@ pub unsafe fn trace(cb: &mut dyn FnMut(&super::Frame) -> bool) {
     let thread = GetCurrentThread();
 
     let mut context = mem::zeroed::<MyContext>();
-    RtlCaptureContext(&mut context.0);
+
+    cfg_if::cfg_if! {
+        if #[cfg(any(not(target_arch = "x86"), target_api_feature = "5.1.2600"))] {
+            RtlCaptureContext(&mut context.0);
+        } else {
+            rtl_capture_context(&mut context.0 as *mut _);
+        }
+    }
 
     // Ensure this process's symbols are initialized
     let dbghelp = match dbghelp::init() {
@@ -240,4 +247,82 @@ fn init_frame(frame: &mut Frame, ctx: &CONTEXT) -> WORD {
     }
     frame.addr_frame_mut().Mode = AddrModeFlat;
     IMAGE_FILE_MACHINE_ARMNT
+}
+
+/// Manual implementation of RtlCaptureContext for pre-XP systems
+#[cfg(all(target_arch = "x86", not(target_api_feature = "5.1.2600")))]
+#[naked]
+#[inline(never)]
+unsafe extern "system" fn rtl_capture_context(context: *mut CONTEXT) {
+    const SEGGS: u8 = 0x8C;
+    const SEGFS: u8 = 0x90;
+    const SEGES: u8 = 0x94;
+    const SEGDS: u8 = 0x98;
+    const EDI: u8 = 0x9C;
+    const ESI: u8 = 0xA0;
+    const EBX: u8 = 0xA4;
+    const EDX: u8 = 0xA8;
+    const ECX: u8 = 0xAC;
+    const EAX: u8 = 0xB0;
+    const EBP: u8 = 0xB4;
+    const EIP: u8 = 0xB8;
+    const SEGCS: u8 = 0xBC;
+    const EFLAGS: u8 = 0xC0;
+    const ESP: u8 = 0xC4;
+    const SEGSS: u8 = 0xC8;
+
+    const CONTEXT_FLAGS: u8 = 0x00;
+    const CONTEXT_FULL: u32 = 0x10007;
+
+    asm!(
+        "push ebx",
+        "mov ebx, [esp+8]",
+        "mov [ebx+{}], eax",
+        "mov eax, [esp]",
+        "mov [ebx+{}], eax",
+        "mov [ebx+{}], ecx",
+        "mov [ebx+{}], edx",
+        "mov [ebx+{}], esi",
+        "mov [ebx+{}], edi",
+
+        "mov [ebx+{}], cs",
+        "mov [ebx+{}], ds",
+        "mov [ebx+{}], es",
+        "mov [ebx+{}], fs",
+        "mov [ebx+{}], gs",
+        "mov [ebx+{}], ss",
+        "pushf",
+        "pop dword ptr [ebx+{}]",
+        "mov eax, [ebp]",
+        "mov [ebx+{}], eax",
+        "mov eax, [ebp+4]",
+        "mov [ebx+{}], eax",
+        "lea eax, [ebp+8]",
+        "mov [ebx+{}], eax",
+        "mov dword ptr [ebx+{}], {}",
+        "pop ebx",
+        "ret 4",
+        const EAX,
+        const EBX,
+        const ECX,
+        const EDX,
+        const ESI,
+        const EDI,
+
+        const SEGCS,
+        const SEGDS,
+        const SEGES,
+        const SEGFS,
+        const SEGGS,
+        const SEGSS,
+
+        const EFLAGS,
+
+        const EBP,
+        const EIP,
+        const ESP,
+        const CONTEXT_FLAGS,
+        const CONTEXT_FULL,
+        out("eax") _,
+    );
 }

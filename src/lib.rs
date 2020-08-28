@@ -52,6 +52,12 @@
 // When we're building as part of libstd, silence all warnings since they're
 // irrelevant as this crate is developed out-of-tree.
 #![cfg_attr(backtrace_in_libstd, allow(warnings))]
+// needed features for the RtlCaptureContext shim impl
+#![cfg_attr(
+    all(target_arch = "x86", not(target_api_feature = "5.1.2600")),
+    feature(asm),
+    feature(naked_functions)
+)]
 
 #[cfg(feature = "std")]
 #[macro_use]

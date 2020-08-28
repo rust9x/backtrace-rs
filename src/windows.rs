@@ -374,7 +374,6 @@ ffi! {
     extern "system" {
         pub fn GetCurrentProcess() -> HANDLE;
         pub fn GetCurrentThread() -> HANDLE;
-        pub fn RtlCaptureContext(ContextRecord: PCONTEXT) -> ();
         pub fn LoadLibraryA(a: *const i8) -> HMODULE;
         pub fn GetProcAddress(h: HMODULE, name: *const i8) -> FARPROC;
         pub fn GetModuleHandleA(name: *const i8) -> HMODULE;
@@ -433,6 +432,14 @@ ffi! {
             hSnapshot: HANDLE,
             lpme: LPMODULEENTRY32W,
         ) -> BOOL;
+    }
+}
+
+#[cfg(any(not(target_arch = "x86"), target_api_feature = "5.1.2600"))]
+ffi! {
+    extern "system" {
+        // only available on XP and higher
+        pub fn RtlCaptureContext(ContextRecord: PCONTEXT) -> ();
     }
 }
 
