@@ -291,7 +291,7 @@ unsafe extern "system" fn rtl_capture_context(context: *mut CONTEXT) {
         "mov [ebx+{}], fs",
         "mov [ebx+{}], gs",
         "mov [ebx+{}], ss",
-        "pushf",
+        "pushfd",
         "pop dword ptr [ebx+{}]",
         "mov eax, [ebp]",
         "mov [ebx+{}], eax",
