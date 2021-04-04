@@ -467,12 +467,12 @@ cfg_if::cfg_if! {
     if #[cfg(miri)] {
         mod miri;
         use miri as imp;
-    } else if #[cfg(all(windows, target_env = "msvc", not(target_vendor = "uwp")))] {
+    } else if #[cfg(all(windows, target_env = "msvc", not(any(target_vendor = "uwp", target_vendor = "oldpc"))))] {
         mod dbghelp;
         use dbghelp as imp;
     } else if #[cfg(all(
         feature = "libbacktrace",
-        any(unix, all(windows, not(target_vendor = "uwp"), target_env = "gnu")),
+        any(unix, all(windows, not(any(target_vendor = "uwp", target_vendor = "oldpc")), target_env = "gnu")),
         not(target_os = "fuchsia"),
         not(target_os = "emscripten"),
         not(target_env = "uclibc"),
@@ -483,7 +483,7 @@ cfg_if::cfg_if! {
     } else if #[cfg(all(
         feature = "gimli-symbolize",
         any(unix, windows),
-        not(target_vendor = "uwp"),
+        not(any(target_vendor = "uwp", target_vendor = "oldpc")),
         not(target_os = "emscripten"),
     ))] {
         mod gimli;

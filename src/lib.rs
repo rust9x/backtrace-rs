@@ -187,7 +187,7 @@ mod lock {
     }
 }
 
-#[cfg(all(windows, not(target_vendor = "uwp")))]
+#[cfg(all(windows, not(any(target_vendor = "uwp", target_vendor = "oldpc"))))]
 mod dbghelp;
 #[cfg(windows)]
 mod windows;
