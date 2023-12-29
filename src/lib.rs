@@ -86,6 +86,7 @@
 //! time, but otherwise it's important to be aware of the limitations of
 //! unwinding-based backtraces!
 
+#![feature(naked_functions)]
 #![deny(missing_docs)]
 #![no_std]
 #![cfg_attr(
