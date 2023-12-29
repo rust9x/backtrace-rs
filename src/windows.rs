@@ -288,6 +288,38 @@ ffi! {
 
     pub type PSYMBOL_INFOW = *mut SYMBOL_INFOW;
 
+    #[repr(C)]
+    pub struct IMAGEHLP_LINE64 {
+        pub SizeOfStruct: DWORD,
+        pub Key: PVOID,
+        pub LineNumber: DWORD,
+        pub FileName: LPSTR,
+        pub Address: DWORD64,
+    }
+
+    pub type PIMAGEHLP_LINE64 = *mut IMAGEHLP_LINE64;
+
+    #[repr(C)]
+    pub struct SYMBOL_INFO {
+        pub SizeOfStruct: ULONG,
+        pub TypeIndex: ULONG,
+        pub Reserved: [ULONG64; 2],
+        pub Index: ULONG,
+        pub Size: ULONG,
+        pub ModBase: ULONG64,
+        pub Flags: ULONG,
+        pub Value: ULONG64,
+        pub Address: ULONG64,
+        pub Register: ULONG,
+        pub Scope: ULONG,
+        pub Tag: ULONG,
+        pub NameLen: ULONG,
+        pub MaxNameLen: ULONG,
+        pub Name: [i8; 1],
+    }
+
+    pub type PSYMBOL_INFO = *mut SYMBOL_INFO;
+
     pub type PTRANSLATE_ADDRESS_ROUTINE64 = Option<
         unsafe extern "system" fn(hProcess: HANDLE, hThread: HANDLE, lpaddr: LPADDRESS64) -> DWORD64,
     >;
@@ -459,7 +491,18 @@ ffi! {
             hSnapshot: HANDLE,
             lpme: LPMODULEENTRY32W,
         ) -> BOOL;
+
+        pub fn MultiByteToWideChar(
+            codepage: u32,
+            dwflags: u32,
+            lpmultibytestr: LPCSTR,
+            cbmultibyte: i32,
+            lpwidecharstr: PWSTR,
+            cchwidechar: i32
+        ) -> i32;
     }
+
+    pub const CP_THREAD_ACP: u32 = 3;
 
     #[link(name = "ntdll")]
     extern "system" {

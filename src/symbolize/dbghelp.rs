@@ -48,8 +48,7 @@ impl Symbol<'_> {
     }
 
     pub fn filename_raw(&self) -> Option<BytesOrWideString<'_>> {
-        self.filename
-            .map(|slice| unsafe { BytesOrWideString::Wide(&*slice) })
+        self.filename.map(|slice| unsafe { BytesOrWideString::Wide(&*slice) })
     }
 
     pub fn colno(&self) -> Option<u32> {
@@ -82,10 +81,14 @@ pub unsafe fn resolve(what: ResolveWhat<'_>, cb: &mut dyn FnMut(&super::Symbol))
         // We are on a version of dbghelp 6.2+, which contains the more modern
         // Inline APIs.
         resolve_with_inline
-    } else {
+    } else if (*dbghelp.dbghelp()).SymFromAddrW().is_some()
+        && (*dbghelp.dbghelp()).SymGetLineFromAddrW64().is_some()
+    {
         // We are on an older version of dbghelp which doesn't contain the Inline
         // APIs.
         resolve_legacy
+    } else {
+        resolve_legacy_multibyte
     };
     match what {
         ResolveWhat::Address(_) => resolve_inner(&dbghelp, what.address_or_ip(), None, cb),
@@ -109,6 +112,22 @@ unsafe fn resolve_legacy(
     do_resolve(
         |info| dbghelp.SymFromAddrW()(GetCurrentProcess(), addr, &mut 0, info),
         |line| dbghelp.SymGetLineFromAddrW64()(GetCurrentProcess(), addr, &mut 0, line),
+        cb,
+    )
+}
+
+// Windows XP's dbghelp (5.1) doesn't have some of the wide APIs, so we have to use the ANSI ones.
+#[inline(never)]
+unsafe fn resolve_legacy_multibyte(
+    dbghelp: &dbghelp::Init,
+    addr: *mut c_void,
+    _inline_context: Option<DWORD>,
+    cb: &mut dyn FnMut(&super::Symbol),
+) {
+    let addr = super::adjust_ip(addr) as DWORD64;
+    do_resolve_multibyte(
+        |info| dbghelp.SymFromAddr()(GetCurrentProcess(), addr, &mut 0, info),
+        |line| dbghelp.SymGetLineFromAddr64()(GetCurrentProcess(), addr, &mut 0, line),
         cb,
     )
 }
@@ -253,6 +272,136 @@ unsafe fn do_resolve(
             _marker: marker::PhantomData,
         },
     })
+}
+
+#[inline(never)]
+unsafe fn do_resolve_multibyte(
+    sym_from_addr: impl FnOnce(*mut SYMBOL_INFO) -> BOOL,
+    get_line_from_addr: impl FnOnce(&mut IMAGEHLP_LINE64) -> BOOL,
+    cb: &mut dyn FnMut(&super::Symbol),
+) {
+    const SIZE: usize = MAX_SYM_NAME + mem::size_of::<SYMBOL_INFO>();
+    let mut data = Aligned8([0u8; SIZE]);
+    let data = &mut data.0;
+    let info = &mut *(data.as_mut_ptr() as *mut SYMBOL_INFO);
+    info.MaxNameLen = MAX_SYM_NAME as ULONG;
+    // the struct size in C.  the value is different to
+    // `size_of::<SYMBOL_INFOW>() - MAX_SYM_NAME + 1` (== 81)
+    // due to struct alignment.
+    info.SizeOfStruct = 88;
+
+    if sym_from_addr(info) != TRUE {
+        return;
+    }
+
+    // If the symbol name is greater than MaxNameLen, SymFromAddrW will
+    // give a buffer of (MaxNameLen - 1) characters and set NameLen to
+    // the real value.
+
+    let multibyte_len = if info.NameLen == 0 {
+        // NameLen is not set correctly on some versions of dbghelp, but the name is still provided.
+        // It seems that older versions of dbghelp don't support whatever #[track_caller] uses, so
+        // some of the symbol names are incorrect/missing/mangled. Still, better than nothing.
+        let ptr = info.Name.as_ptr();
+        'len: {
+            for i in 0..(info.MaxNameLen - 1) as isize {
+                if *ptr.offset(i) == 0 {
+                    break 'len i as usize;
+                }
+            }
+
+            0
+        }
+    } else {
+        ::core::cmp::min(info.NameLen as usize, info.MaxNameLen as usize - 1)
+    };
+
+    let multibyte_ptr = info.Name.as_ptr();
+    let multibyte_str = slice::from_raw_parts(multibyte_ptr, multibyte_len);
+
+    // Reencode from local charset to utf-16
+    let mut name_buffer_utf16 = [0; 260 * 2];
+    let utf16_len = convert_multibyte(&mut name_buffer_utf16, multibyte_str);
+
+    // Reencode the utf-16 symbol to utf-8 so we can use `SymbolName::new` like
+    // all other platforms
+    let mut name_len = 0;
+    let mut name_buffer = [0; 256];
+    {
+        let mut remaining = &mut name_buffer[..];
+        for c in char::decode_utf16(name_buffer_utf16[..utf16_len].iter().cloned()) {
+            let c = c.unwrap_or(char::REPLACEMENT_CHARACTER);
+            let len = c.len_utf8();
+            if len < remaining.len() {
+                c.encode_utf8(remaining);
+                let tmp = remaining;
+                remaining = &mut tmp[len..];
+                name_len += len;
+            } else {
+                break;
+            }
+        }
+    }
+    let name = &name_buffer[..name_len] as *const [u8];
+
+    let mut line = mem::zeroed::<IMAGEHLP_LINE64>();
+    line.SizeOfStruct = mem::size_of::<IMAGEHLP_LINE64>() as DWORD;
+
+    let mut filename = None;
+    let mut lineno = None;
+    let mut filename_buffer_utf16 = [0; 260 * 2];
+    if get_line_from_addr(&mut line) == TRUE {
+        lineno = Some(line.LineNumber as u32);
+
+        let base = line.FileName;
+        let mut len = 0;
+        while *base.offset(len) != 0 {
+            len += 1;
+        }
+
+        let len = len as usize;
+        let filename_multibyte = slice::from_raw_parts(base, len);
+        // Reencode from local charset to utf-16
+        let len_in_wchars = convert_multibyte(&mut filename_buffer_utf16, filename_multibyte);
+
+        filename = Some(&filename_buffer_utf16[..len_in_wchars] as *const [u16]);
+    }
+
+    cb(&super::Symbol {
+        inner: Symbol {
+            name,
+            addr: info.Address as *mut _,
+            line: lineno,
+            filename,
+            _filename_cache: cache(filename),
+            _marker: marker::PhantomData,
+        },
+    })
+}
+
+unsafe fn convert_multibyte(output: &mut [u16; 260 * 2], input: &[i8]) -> usize {
+    let input_len = input.len().min(260) as i32;
+    let size = MultiByteToWideChar(
+        CP_THREAD_ACP,
+        0,
+        input.as_ptr(),
+        input_len,
+        output.as_mut_ptr(),
+        0,
+    );
+
+    if size >= 260 * 2 - 1 {
+        return 0;
+    }
+
+    MultiByteToWideChar(
+        CP_THREAD_ACP,
+        0,
+        input.as_ptr(),
+        input_len,
+        output.as_mut_ptr(),
+        size,
+    ) as usize
 }
 
 #[cfg(feature = "std")]

@@ -169,7 +169,7 @@ dbghelp! {
     extern "system" {
         fn SymGetOptions() -> DWORD;
         fn SymSetOptions(options: DWORD) -> DWORD;
-        fn SymInitializeW(
+        fn SymInitialize(
             handle: HANDLE,
             path: PCWSTR,
             invade: BOOL
@@ -244,6 +244,20 @@ dbghelp! {
             dwAddr: DWORD64,
             pdwDisplacement: PDWORD,
             Line: PIMAGEHLP_LINEW64
+        ) -> BOOL;
+
+
+        fn SymFromAddr(
+            hProcess: HANDLE,
+            Address: DWORD64,
+            Displacement: PDWORD64,
+            Symbol: PSYMBOL_INFO
+        ) -> BOOL;
+        fn SymGetLineFromAddr64(
+            hProcess: HANDLE,
+            dwAddr: DWORD64,
+            pdwDisplacement: PDWORD,
+            Line: PIMAGEHLP_LINE64
         ) -> BOOL;
     }
 }
@@ -371,7 +385,7 @@ pub fn init() -> Result<Init, ()> {
         // the time, but now that it's using this crate it means that someone will
         // get to initialization first and the other will pick up that
         // initialization.
-        DBGHELP.SymInitializeW().unwrap()(GetCurrentProcess(), ptr::null_mut(), TRUE);
+        DBGHELP.SymInitialize().unwrap()(GetCurrentProcess(), ptr::null_mut(), TRUE);
         INITIALIZED = true;
         Ok(ret)
     }

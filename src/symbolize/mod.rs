@@ -139,11 +139,7 @@ impl<'a> ResolveWhat<'a> {
 // subtract one. Consumers should keep working and getting pretty good results,
 // so we should be good enough.
 fn adjust_ip(a: *mut c_void) -> *mut c_void {
-    if a.is_null() {
-        a
-    } else {
-        (a as usize - 1) as *mut c_void
-    }
+    if a.is_null() { a } else { (a as usize - 1) as *mut c_void }
 }
 
 /// Same as `resolve`, only unsafe as it's unsynchronized.
@@ -333,21 +329,14 @@ impl<'a> SymbolName<'a> {
             OptionCppSymbol::none()
         };
 
-        SymbolName {
-            bytes: bytes,
-            demangled: demangled,
-            cpp_demangled: cpp,
-        }
+        SymbolName { bytes: bytes, demangled: demangled, cpp_demangled: cpp }
     }
 
     /// Returns the raw (mangled) symbol name as a `str` if the symbol is valid utf-8.
     ///
     /// Use the `Display` implementation if you want the demangled version.
     pub fn as_str(&self) -> Option<&'a str> {
-        self.demangled
-            .as_ref()
-            .map(|s| s.as_str())
-            .or_else(|| str::from_utf8(self.bytes).ok())
+        self.demangled.as_ref().map(|s| s.as_str()).or_else(|| str::from_utf8(self.bytes).ok())
     }
 
     /// Returns the raw symbol name as a list of bytes
