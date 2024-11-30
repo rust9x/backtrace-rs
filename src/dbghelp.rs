@@ -23,12 +23,10 @@
 #![allow(non_snake_case)]
 
 use alloc::vec::Vec;
+use core::ffi::c_void;
+use core::{mem, ptr, slice};
 
 use super::windows_sys::*;
-use core::ffi::c_void;
-use core::mem;
-use core::ptr;
-use core::slice;
 
 // This is used when we're double-checking function signatures against windows-sys.
 #[inline(always)]
@@ -126,9 +124,9 @@ dbghelp! {
     extern "system" {
         fn SymGetOptions() -> u32;
         fn SymSetOptions(options: u32) -> u32;
-        fn SymInitializeW(
+        fn SymInitialize(
             handle: HANDLE,
-            path: PCWSTR,
+            path: PCSTR,
             invade: BOOL
         ) -> BOOL;
         fn SymGetSearchPathW(
@@ -175,6 +173,18 @@ dbghelp! {
             dwAddr: u64,
             pdwDisplacement: *mut u32,
             Line: *mut IMAGEHLP_LINEW64
+        ) -> BOOL;
+        fn SymFromAddr(
+            hProcess: HANDLE,
+            Address: u64,
+            Displacement: *mut u64,
+            Symbol: *mut SYMBOL_INFO
+        ) -> BOOL;
+        fn SymGetLineFromAddr64(
+            hProcess: HANDLE,
+            dwAddr: u64,
+            pdwDisplacement: *mut u32,
+            Line: *mut IMAGEHLP_LINE64
         ) -> BOOL;
         fn StackWalkEx(
             MachineType: u32,
@@ -230,7 +240,8 @@ pub struct Init {
 /// synchronization. Also note that it is safe to call this function multiple
 /// times recursively.
 pub fn init() -> Result<Init, ()> {
-    use core::sync::atomic::{AtomicPtr, Ordering::SeqCst};
+    use core::sync::atomic::AtomicPtr;
+    use core::sync::atomic::Ordering::SeqCst;
 
     // Helper function for generating a name that's unique to the process.
     fn mutex_name() -> [u8; 33] {
@@ -346,7 +357,7 @@ fn set_optional_options() -> Option<()> {
         // the time, but now that it's using this crate it means that someone will
         // get to initialization first and the other will pick up that
         // initialization.
-        DBGHELP.SymInitializeW()?(GetCurrentProcess(), ptr::null_mut(), TRUE);
+        DBGHELP.SymInitialize()?(GetCurrentProcess(), ptr::null_mut(), TRUE);
 
         // The default search path for dbghelp will only look in the current working
         // directory and (possibly) `_NT_SYMBOL_PATH` and `_NT_ALT_SYMBOL_PATH`.
@@ -407,9 +418,7 @@ fn utf16_char(c: char) -> u16 {
 
 impl SearchPath {
     fn new(initial_search_path: Vec<u16>) -> Self {
-        Self {
-            search_path_utf16: initial_search_path,
-        }
+        Self { search_path_utf16: initial_search_path }
     }
 
     /// Add a path to the search path if it is not already present.
@@ -419,11 +428,7 @@ impl SearchPath {
         // We could deduplicate in a case-insensitive way, but case-sensitivity
         // can be configured by directory on Windows, so let's not do that.
         // https://learn.microsoft.com/windows/wsl/case-sensitivity
-        if !self
-            .search_path_utf16
-            .split(|&c| c == sep)
-            .any(|p| p == path)
-        {
+        if !self.search_path_utf16.split(|&c| c == sep).any(|p| p == path) {
             if self.search_path_utf16.last() != Some(&sep) {
                 self.search_path_utf16.push(sep);
             }
@@ -457,9 +462,8 @@ extern "system" fn enum_loaded_modules_callback(
     let path_sep = utf16_char('\\');
     let alt_path_sep = utf16_char('/');
 
-    let Some(end_of_directory) = module_name
-        .iter()
-        .rposition(|&c| c == path_sep || c == alt_path_sep)
+    let Some(end_of_directory) =
+        module_name.iter().rposition(|&c| c == path_sep || c == alt_path_sep)
     else {
         // `module_name` being an absolute path, it should always contain at least one
         // path separator. If not, there is nothing we can do.
