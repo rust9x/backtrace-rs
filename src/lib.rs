@@ -86,6 +86,7 @@
 //! time, but otherwise it's important to be aware of the limitations of
 //! unwinding-based backtraces!
 
+#![feature(naked_functions)]
 #![deny(missing_docs)]
 #![no_std]
 #![cfg_attr(
@@ -107,11 +108,12 @@ extern crate std;
 #[allow(unused_extern_crates)]
 extern crate alloc;
 
-pub use self::backtrace::{trace_unsynchronized, Frame};
+pub use self::backtrace::{Frame, trace_unsynchronized};
 mod backtrace;
 
-pub use self::symbolize::resolve_frame_unsynchronized;
-pub use self::symbolize::{resolve_unsynchronized, Symbol, SymbolName};
+pub use self::symbolize::{
+    Symbol, SymbolName, resolve_frame_unsynchronized, resolve_unsynchronized,
+};
 mod symbolize;
 
 pub use self::types::BytesOrWideString;
