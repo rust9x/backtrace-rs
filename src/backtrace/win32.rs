@@ -214,8 +214,8 @@ fn init_frame(frame: &mut Frame, ctx: &CONTEXT) -> u16 {
     IMAGE_FILE_MACHINE_ARMNT
 }
 
-#[cfg(all(target_arch = "x86", target_vendor = "rust9x"))]
-#[naked]
+#[cfg(all(target_arch = "x86", target_family = "rust9x"))]
+#[unsafe(naked)]
 unsafe extern "C" fn RtlCaptureContext(context: &mut CONTEXT) {
     core::arch::naked_asm!(
         "

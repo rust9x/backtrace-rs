@@ -11,15 +11,17 @@ windows_targets::link!("dbghelp.dll" "system" fn EnumerateLoadedModulesW64(hproc
 windows_targets::link!("dbghelp.dll" "system" fn StackWalk64(machinetype : u32, hprocess : HANDLE, hthread : HANDLE, stackframe : *mut STACKFRAME64, contextrecord : *mut core::ffi::c_void, readmemoryroutine : PREAD_PROCESS_MEMORY_ROUTINE64, functiontableaccessroutine : PFUNCTION_TABLE_ACCESS_ROUTINE64, getmodulebaseroutine : PGET_MODULE_BASE_ROUTINE64, translateaddress : PTRANSLATE_ADDRESS_ROUTINE64) -> BOOL);
 windows_targets::link!("dbghelp.dll" "system" fn StackWalkEx(machinetype : u32, hprocess : HANDLE, hthread : HANDLE, stackframe : *mut STACKFRAME_EX, contextrecord : *mut core::ffi::c_void, readmemoryroutine : PREAD_PROCESS_MEMORY_ROUTINE64, functiontableaccessroutine : PFUNCTION_TABLE_ACCESS_ROUTINE64, getmodulebaseroutine : PGET_MODULE_BASE_ROUTINE64, translateaddress : PTRANSLATE_ADDRESS_ROUTINE64, flags : u32) -> BOOL);
 windows_targets::link!("dbghelp.dll" "system" fn SymAddrIncludeInlineTrace(hprocess : HANDLE, address : u64) -> u32);
+windows_targets::link!("dbghelp.dll" "system" fn SymFromAddr(hprocess : HANDLE, address : u64, displacement : *mut u64, symbol : *mut SYMBOL_INFO) -> BOOL);
 windows_targets::link!("dbghelp.dll" "system" fn SymFromAddrW(hprocess : HANDLE, address : u64, displacement : *mut u64, symbol : *mut SYMBOL_INFOW) -> BOOL);
 windows_targets::link!("dbghelp.dll" "system" fn SymFromInlineContextW(hprocess : HANDLE, address : u64, inlinecontext : u32, displacement : *mut u64, symbol : *mut SYMBOL_INFOW) -> BOOL);
 windows_targets::link!("dbghelp.dll" "system" fn SymFunctionTableAccess64(hprocess : HANDLE, addrbase : u64) -> *mut core::ffi::c_void);
+windows_targets::link!("dbghelp.dll" "system" fn SymGetLineFromAddr64(hprocess : HANDLE, qwaddr : u64, pdwdisplacement : *mut u32, line64 : *mut IMAGEHLP_LINE64) -> BOOL);
 windows_targets::link!("dbghelp.dll" "system" fn SymGetLineFromAddrW64(hprocess : HANDLE, dwaddr : u64, pdwdisplacement : *mut u32, line : *mut IMAGEHLP_LINEW64) -> BOOL);
 windows_targets::link!("dbghelp.dll" "system" fn SymGetLineFromInlineContextW(hprocess : HANDLE, dwaddr : u64, inlinecontext : u32, qwmodulebaseaddress : u64, pdwdisplacement : *mut u32, line : *mut IMAGEHLP_LINEW64) -> BOOL);
 windows_targets::link!("dbghelp.dll" "system" fn SymGetModuleBase64(hprocess : HANDLE, qwaddr : u64) -> u64);
 windows_targets::link!("dbghelp.dll" "system" fn SymGetOptions() -> u32);
 windows_targets::link!("dbghelp.dll" "system" fn SymGetSearchPathW(hprocess : HANDLE, searchpatha : PWSTR, searchpathlength : u32) -> BOOL);
-windows_targets::link!("dbghelp.dll" "system" fn SymInitializeW(hprocess : HANDLE, usersearchpath : PCWSTR, finvadeprocess : BOOL) -> BOOL);
+windows_targets::link!("dbghelp.dll" "system" fn SymInitialize(hprocess : HANDLE, usersearchpath : PCSTR, finvadeprocess : BOOL) -> BOOL);
 windows_targets::link!("dbghelp.dll" "system" fn SymQueryInlineTrace(hprocess : HANDLE, startaddress : u64, startcontext : u32, startretaddress : u64, curaddress : u64, curcontext : *mut u32, curframeindex : *mut u32) -> BOOL);
 windows_targets::link!("dbghelp.dll" "system" fn SymSetOptions(symoptions : u32) -> u32);
 windows_targets::link!("dbghelp.dll" "system" fn SymSetSearchPathW(hprocess : HANDLE, searchpatha : PCWSTR) -> BOOL);
@@ -35,6 +37,7 @@ windows_targets::link!("kernel32.dll" "system" fn LoadLibraryA(lplibfilename : P
 windows_targets::link!("kernel32.dll" "system" fn MapViewOfFile(hfilemappingobject : HANDLE, dwdesiredaccess : FILE_MAP, dwfileoffsethigh : u32, dwfileoffsetlow : u32, dwnumberofbytestomap : usize) -> MEMORY_MAPPED_VIEW_ADDRESS);
 windows_targets::link!("kernel32.dll" "system" fn Module32FirstW(hsnapshot : HANDLE, lpme : *mut MODULEENTRY32W) -> BOOL);
 windows_targets::link!("kernel32.dll" "system" fn Module32NextW(hsnapshot : HANDLE, lpme : *mut MODULEENTRY32W) -> BOOL);
+windows_targets::link!("kernel32.dll" "system" fn MultiByteToWideChar(codepage : u32, dwflags : MULTI_BYTE_TO_WIDE_CHAR_FLAGS, lpmultibytestr : PCSTR, cbmultibyte : i32, lpwidecharstr : PWSTR, cchwidechar : i32) -> i32);
 windows_targets::link!("kernel32.dll" "system" fn ReleaseMutex(hmutex : HANDLE) -> BOOL);
 windows_targets::link!("kernel32.dll" "system" fn RtlCaptureContext(contextrecord : *mut CONTEXT));
 #[cfg(target_arch = "aarch64")]
@@ -245,8 +248,8 @@ pub struct CONTEXT {
     pub SegSs: u32,
     pub ExtendedRegisters: [u8; 512],
 }
-
 pub type CONTEXT_FLAGS = u32;
+pub const CP_THREAD_ACP: u32 = 3u32;
 pub const CP_UTF8: u32 = 65001u32;
 pub type CREATE_TOOLHELP_SNAPSHOT_FLAGS = u32;
 pub type EXCEPTION_DISPOSITION = i32;
@@ -307,6 +310,15 @@ pub struct FLOATING_SAVE_AREA {
 pub type HANDLE = *mut core::ffi::c_void;
 pub type HINSTANCE = *mut core::ffi::c_void;
 pub type HMODULE = *mut core::ffi::c_void;
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct IMAGEHLP_LINE64 {
+    pub SizeOfStruct: u32,
+    pub Key: *mut core::ffi::c_void,
+    pub LineNumber: u32,
+    pub FileName: PSTR,
+    pub Address: u64,
+}
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct IMAGEHLP_LINEW64 {
@@ -491,6 +503,7 @@ pub struct MODULEENTRY32W {
     pub szModule: [u16; 256],
     pub szExePath: [u16; 260],
 }
+pub type MULTI_BYTE_TO_WIDE_CHAR_FLAGS = u32;
 pub type NTSTATUS = i32;
 pub type PAGE_PROTECTION_FLAGS = u32;
 pub const PAGE_READONLY: PAGE_PROTECTION_FLAGS = 2u32;
@@ -561,6 +574,25 @@ pub struct STACKFRAME_EX {
     pub KdHelp: KDHELP64,
     pub StackFrameSize: u32,
     pub InlineFrameContext: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct SYMBOL_INFO {
+    pub SizeOfStruct: u32,
+    pub TypeIndex: u32,
+    pub Reserved: [u64; 2],
+    pub Index: u32,
+    pub Size: u32,
+    pub ModBase: u64,
+    pub Flags: SYMBOL_INFO_FLAGS,
+    pub Value: u64,
+    pub Address: u64,
+    pub Register: u32,
+    pub Scope: u32,
+    pub Tag: u32,
+    pub NameLen: u32,
+    pub MaxNameLen: u32,
+    pub Name: [i8; 1],
 }
 #[repr(C)]
 #[derive(Clone, Copy)]
