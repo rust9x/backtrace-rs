@@ -10,6 +10,7 @@
 //! for more information about that.
 
 use super::super::{dbghelp, windows_sys::*};
+
 use core::ffi::c_void;
 use core::mem;
 
@@ -211,4 +212,45 @@ fn init_frame(frame: &mut Frame, ctx: &CONTEXT) -> u16 {
     }
     frame.addr_frame_mut().Mode = AddrModeFlat;
     IMAGE_FILE_MACHINE_ARMNT
+}
+
+#[cfg(all(target_arch = "x86", target_vendor = "rust9x"))]
+#[naked]
+unsafe extern "C" fn RtlCaptureContext(context: &mut CONTEXT) {
+    core::arch::naked_asm!(
+        "
+            push ebx
+            mov ebx, [esp+8]
+
+            mov [ebx+0xB0], eax
+            mov [ebx+0xAC], ecx
+            mov [ebx+0xA8], edx
+            mov eax, [esp]
+            mov [ebx+0xA4], eax
+            mov [ebx+0xA0], esi
+            mov [ebx+0x9C], edi
+
+            mov [ebx+0xBC], cs
+            mov [ebx+0x98], ds
+            mov [ebx+0x94], es
+            mov [ebx+0x90], fs
+            mov [ebx+0x8C], gs
+            mov [ebx+0xC8], ss
+
+            pushfd
+            pop dword ptr [ebx]
+
+            mov eax, [ebp+4]
+            mov [ebx+0xB8], eax
+
+            mov eax, [ebp+0]
+            mov [ebx+0xB4], eax
+
+            lea eax, [ebp+8]
+            mov [ebx+0xC4], eax
+
+            pop ebx
+            ret 4
+        ",
+    )
 }
