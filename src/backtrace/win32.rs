@@ -221,7 +221,7 @@ fn init_frame(frame: &mut Frame, ctx: &CONTEXT) -> u16 {
 
 #[cfg(all(target_arch = "x86", target_family = "rust9x"))]
 #[unsafe(naked)]
-unsafe extern "C" fn RtlCaptureContext(context: &mut CONTEXT) {
+unsafe extern "stdcall" fn RtlCaptureContext(context: &mut CONTEXT) {
     core::arch::naked_asm!(
         "
             push ebx
