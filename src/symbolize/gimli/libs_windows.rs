@@ -16,6 +16,7 @@ pub(super) fn native_libraries() -> Vec<Library> {
     return ret;
 }
 
+#[cfg(not(target_family = "rust9x"))]
 unsafe fn add_loaded_images(ret: &mut Vec<Library>) {
     unsafe {
         let snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, 0);
@@ -33,6 +34,129 @@ unsafe fn add_loaded_images(ret: &mut Vec<Library>) {
                 }
 
                 if Module32NextW(snap, &mut me) != TRUE {
+                    break;
+                }
+            }
+        }
+
+        CloseHandle(snap);
+    }
+}
+
+#[cfg(target_family = "rust9x")]
+unsafe fn module_entry_widen(input: &MODULEENTRY32) -> MODULEENTRY32W {
+    let mut output = MODULEENTRY32W {
+        dwSize: (mem::size_of::<MODULEENTRY32W>() as u32),
+        th32ModuleID: input.th32ModuleID,
+        th32ProcessID: input.th32ProcessID,
+        GlblcntUsage: input.GlblcntUsage,
+        ProccntUsage: input.ProccntUsage,
+        modBaseAddr: input.modBaseAddr,
+        modBaseSize: input.modBaseSize,
+        hModule: input.hModule,
+        szExePath: [0; 260],
+        szModule: [0; 256],
+    };
+
+    unsafe fn convert_path(narrow: &[u8], wide: &mut [u16]) {
+        let len_input: i32 = narrow.len().try_into().unwrap();
+        let len_output: i32 = wide.len().try_into().unwrap();
+        MultiByteToWideChar(
+            CP_ACP,
+            0,
+            narrow.as_ptr(),
+            len_input,
+            wide.as_mut_ptr(),
+            len_output - 1, // Keep 1 character for a NULL
+        );
+    }
+
+    convert_path(&input.szModule, &mut output.szModule);
+    convert_path(&input.szExePath, &mut output.szExePath);
+
+    output
+}
+
+#[cfg(target_family = "rust9x")]
+unsafe fn add_loaded_images_narrow(kernel32: HMODULE, snap: HANDLE, ret: &mut Vec<Library>) {
+    unsafe {
+        let Some(module32next_proc) = GetProcAddress(kernel32, c"Module32Next".as_ptr().cast())
+        else {
+            return;
+        };
+        let Some(module32first_proc) = GetProcAddress(kernel32, c"Module32First".as_ptr().cast())
+        else {
+            return;
+        };
+
+        let module32first_func: extern "stdcall" fn(HANDLE, *mut MODULEENTRY32) -> BOOL =
+            mem::transmute(module32first_proc);
+        let module32next_func: extern "stdcall" fn(HANDLE, *mut MODULEENTRY32) -> BOOL =
+            mem::transmute(module32next_proc);
+
+        // huge struct, probably should avoid manually initializing it even if we can
+        let mut me = MaybeUninit::<MODULEENTRY32>::zeroed().assume_init();
+        me.dwSize = mem::size_of_val(&me) as u32;
+        if module32first_func(snap, &mut me) == TRUE {
+            loop {
+                let me_wide = module_entry_widen(&me);
+                if let Some(lib) = load_library(&me_wide) {
+                    ret.push(lib);
+                }
+
+                if module32next_func(snap, &mut me) != TRUE {
+                    break;
+                }
+            }
+        }
+    }
+}
+
+#[cfg(target_family = "rust9x")]
+unsafe fn add_loaded_images(ret: &mut Vec<Library>) {
+    unsafe {
+        let kernel32 = GetModuleHandleA(c"KERNEL32.DLL".as_ptr().cast());
+        let Some(snapshot_proc) =
+            GetProcAddress(kernel32, c"CreateToolhelp32Snapshot".as_ptr().cast())
+        else {
+            return;
+        };
+        let snapshot_func: extern "stdcall" fn(CREATE_TOOLHELP_SNAPSHOT_FLAGS, u32) -> HANDLE =
+            mem::transmute(snapshot_proc);
+
+        let snap = snapshot_func(TH32CS_SNAPMODULE, 0);
+        if snap == INVALID_HANDLE_VALUE {
+            return;
+        }
+
+        let Some(module32next_proc) = GetProcAddress(kernel32, c"Module32NextW".as_ptr().cast())
+        else {
+            add_loaded_images_narrow(kernel32, snap, ret);
+            CloseHandle(snap);
+            return;
+        };
+        let Some(module32first_proc) = GetProcAddress(kernel32, c"Module32FirstW".as_ptr().cast())
+        else {
+            add_loaded_images_narrow(kernel32, snap, ret);
+            CloseHandle(snap);
+            return;
+        };
+
+        let module32first_func: extern "stdcall" fn(HANDLE, *mut MODULEENTRY32W) -> BOOL =
+            mem::transmute(module32first_proc);
+        let module32next_func: extern "stdcall" fn(HANDLE, *mut MODULEENTRY32W) -> BOOL =
+            mem::transmute(module32next_proc);
+
+        // huge struct, probably should avoid manually initializing it even if we can
+        let mut me = MaybeUninit::<MODULEENTRY32W>::zeroed().assume_init();
+        me.dwSize = mem::size_of_val(&me) as u32;
+        if module32first_func(snap, &mut me) == TRUE {
+            loop {
+                if let Some(lib) = load_library(&me) {
+                    ret.push(lib);
+                }
+
+                if module32next_func(snap, &mut me) != TRUE {
                     break;
                 }
             }
