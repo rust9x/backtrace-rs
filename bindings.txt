@@ -7,6 +7,7 @@ Windows.Win32.Foundation.HINSTANCE
 Windows.Win32.Foundation.INVALID_HANDLE_VALUE
 Windows.Win32.Foundation.TRUE
 Windows.Win32.Globalization.CP_UTF8
+Windows.Win32.Globalization.CP_ACP
 Windows.Win32.Globalization.CP_THREAD_ACP
 Windows.Win32.Globalization.lstrlenW
 Windows.Win32.Globalization.MultiByteToWideChar
@@ -48,8 +49,10 @@ Windows.Win32.System.Diagnostics.Debug.SymSetSearchPathW
 Windows.Win32.System.Diagnostics.ToolHelp.CreateToolhelp32Snapshot
 Windows.Win32.System.Diagnostics.ToolHelp.Module32FirstW
 Windows.Win32.System.Diagnostics.ToolHelp.Module32NextW
+Windows.Win32.System.Diagnostics.ToolHelp.MODULEENTRY
 Windows.Win32.System.Diagnostics.ToolHelp.MODULEENTRY32W
 Windows.Win32.System.Diagnostics.ToolHelp.TH32CS_SNAPMODULE
+Windows.Win32.System.LibraryLoader.GetModuleHandleA
 Windows.Win32.System.LibraryLoader.GetProcAddress
 Windows.Win32.System.LibraryLoader.LoadLibraryA
 Windows.Win32.System.Memory.CreateFileMappingA

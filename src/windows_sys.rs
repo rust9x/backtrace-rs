@@ -26,6 +26,7 @@ windows_link::link!("kernel32.dll" "system" fn CreateToolhelp32Snapshot(dwflags 
 windows_link::link!("kernel32.dll" "system" fn GetCurrentProcess() -> HANDLE);
 windows_link::link!("kernel32.dll" "system" fn GetCurrentProcessId() -> u32);
 windows_link::link!("kernel32.dll" "system" fn GetCurrentThread() -> HANDLE);
+windows_link::link!("kernel32.dll" "system" fn GetModuleHandleA(lpmodulename : PCSTR) -> HMODULE);
 windows_link::link!("kernel32.dll" "system" fn GetProcAddress(hmodule : HMODULE, lpprocname : PCSTR) -> FARPROC);
 windows_link::link!("kernel32.dll" "system" fn LoadLibraryA(lplibfilename : PCSTR) -> HMODULE);
 windows_link::link!("kernel32.dll" "system" fn MapViewOfFile(hfilemappingobject : HANDLE, dwdesiredaccess : FILE_MAP, dwfileoffsethigh : u32, dwfileoffsetlow : u32, dwnumberofbytestomap : usize) -> MEMORY_MAPPED_VIEW_ADDRESS);
@@ -243,6 +244,7 @@ pub struct CONTEXT {
     pub ExtendedRegisters: [u8; 512],
 }
 pub type CONTEXT_FLAGS = u32;
+pub const CP_ACP: u32 = 0u32;
 pub const CP_THREAD_ACP: u32 = 3u32;
 pub const CP_UTF8: u32 = 65001u32;
 pub type CREATE_TOOLHELP_SNAPSHOT_FLAGS = u32;
@@ -478,6 +480,20 @@ pub const MAX_SYM_NAME: u32 = 2000u32;
 #[derive(Clone, Copy)]
 pub struct MEMORY_MAPPED_VIEW_ADDRESS {
     pub Value: *mut core::ffi::c_void,
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct MODULEENTRY32 {
+    pub dwSize: u32,
+    pub th32ModuleID: u32,
+    pub th32ProcessID: u32,
+    pub GlblcntUsage: u32,
+    pub ProccntUsage: u32,
+    pub modBaseAddr: *mut u8,
+    pub modBaseSize: u32,
+    pub hModule: HMODULE,
+    pub szModule: [u8; 256],
+    pub szExePath: [u8; 260],
 }
 #[repr(C)]
 #[derive(Clone, Copy)]
